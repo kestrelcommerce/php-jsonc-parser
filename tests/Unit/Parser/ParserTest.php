@@ -8,6 +8,91 @@ use Kestrel\JsoncParser\Parser\NodeType;
 use Kestrel\JsoncParser\Parser\JsonVisitor;
 use Kestrel\JsoncParser\Parser\ParseErrorCode;
 
+/**
+ * A reusable visitor that records events to an array.
+ * Configure which events to record via constructor parameters.
+ */
+class EventRecordingVisitor implements JsonVisitor
+{
+    /** @var array<array<mixed>> */
+    public array $events = [];
+
+    public function __construct(
+        private bool $recordObject = true,
+        private bool $recordArray = true,
+        private bool $recordLiteral = true,
+        private bool $recordSeparator = true,
+        private bool $recordComment = true,
+        private bool $recordError = true,
+    ) {
+    }
+
+    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        if ($this->recordObject) {
+            $this->events[] = ['onObjectBegin', $offset, $pathSupplier()];
+        }
+        return null;
+    }
+
+    public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
+    {
+        if ($this->recordObject) {
+            $this->events[] = ['onObjectProperty', $property, $pathSupplier()];
+        }
+    }
+
+    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): void
+    {
+        if ($this->recordObject) {
+            $this->events[] = ['onObjectEnd', $offset];
+        }
+    }
+
+    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        if ($this->recordArray) {
+            $this->events[] = ['onArrayBegin', $offset, $pathSupplier()];
+        }
+        return null;
+    }
+
+    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): void
+    {
+        if ($this->recordArray) {
+            $this->events[] = ['onArrayEnd', $offset];
+        }
+    }
+
+    public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
+    {
+        if ($this->recordLiteral) {
+            $this->events[] = ['onLiteralValue', $value, $pathSupplier()];
+        }
+    }
+
+    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): void
+    {
+        if ($this->recordSeparator) {
+            $this->events[] = ['onSeparator', $character];
+        }
+    }
+
+    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): void
+    {
+        if ($this->recordComment) {
+            $this->events[] = ['onComment', $offset];
+        }
+    }
+
+    public function onError(ParseErrorCode $error, int $offset, int $length, int $startLine, int $startCharacter): void
+    {
+        if ($this->recordError) {
+            $this->events[] = ['onError', $error];
+        }
+    }
+}
+
 describe('parse: literals', function () {
     test('parses boolean literals', function () {
         assertValidParse('true', true);
@@ -292,122 +377,31 @@ describe('parseTree: objects', function () {
 
 describe('visit: object', function () {
     test('visits empty object', function () {
-        /** @var array<array<mixed>> $events */
-        $events = [];
-
-        $visitor = new class ($events) implements JsonVisitor {
-            /**
-             * @param array<array<mixed>> $events
-             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
-             */
-            public function __construct(private array &$events)
-            {
-            }
-
-            public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                $this->events[] = ['onObjectBegin', $offset, $pathSupplier()];
-                return null;
-            }
-            public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-                $this->events[] = ['onObjectProperty', $property, $pathSupplier()];
-            }
-            public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onObjectEnd', $offset];
-            }
-            public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                $this->events[] = ['onArrayBegin', $offset, $pathSupplier()];
-                return null;
-            }
-            public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onArrayEnd', $offset];
-            }
-            public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-                $this->events[] = ['onLiteralValue', $value, $pathSupplier()];
-            }
-            public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onSeparator', $character];
-            }
-            public function onComment(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onComment', $offset];
-            }
-            public function onError(ParseErrorCode $error, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onError', $error];
-            }
-        };
+        $visitor = new EventRecordingVisitor(
+            recordArray: false,
+            recordLiteral: false,
+            recordComment: false,
+            recordError: false,
+        );
 
         JsoncParser::visit('{ }', $visitor);
 
-        expect($events)->toBe([
+        expect($visitor->events)->toBe([
             ['onObjectBegin', 0, []],
             ['onObjectEnd', 2],
         ]);
     });
 
     test('visits simple object', function () {
-        /** @var array<array<mixed>> $events */
-        $events = [];
-
-        $visitor = new class ($events) implements JsonVisitor {
-            /**
-             * @param array<array<mixed>> $events
-             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
-             */
-            public function __construct(private array &$events)
-            {
-            }
-
-            public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                $this->events[] = ['onObjectBegin', $offset, $pathSupplier()];
-                return null;
-            }
-            public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-                $this->events[] = ['onObjectProperty', $property, $pathSupplier()];
-            }
-            public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onObjectEnd', $offset];
-            }
-            public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                $this->events[] = ['onArrayBegin', $offset, $pathSupplier()];
-                return null;
-            }
-            public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onArrayEnd', $offset];
-            }
-            public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-                $this->events[] = ['onLiteralValue', $value, $pathSupplier()];
-            }
-            public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onSeparator', $character];
-            }
-            public function onComment(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onComment', $offset];
-            }
-            public function onError(ParseErrorCode $error, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onError', $error];
-            }
-        };
+        $visitor = new EventRecordingVisitor(
+            recordArray: false,
+            recordComment: false,
+            recordError: false,
+        );
 
         JsoncParser::visit('{ "foo": "bar" }', $visitor);
 
-        expect($events)->toBe([
+        expect($visitor->events)->toBe([
             ['onObjectBegin', 0, []],
             ['onObjectProperty', 'foo', []],
             ['onSeparator', ':'],
@@ -419,110 +413,32 @@ describe('visit: object', function () {
 
 describe('visit: array', function () {
     test('visits empty array', function () {
-        /** @var array<array<mixed>> $events */
-        $events = [];
-
-        $visitor = new class ($events) implements JsonVisitor {
-            /**
-             * @param array<array<mixed>> $events
-             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
-             */
-            public function __construct(private array &$events)
-            {
-            }
-
-            public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                return null;
-            }
-            public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-            }
-            public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-            public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                $this->events[] = ['onArrayBegin', $offset, $pathSupplier()];
-                return null;
-            }
-            public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onArrayEnd', $offset];
-            }
-            public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-                $this->events[] = ['onLiteralValue', $value, $pathSupplier()];
-            }
-            public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-            public function onComment(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-            public function onError(ParseErrorCode $error, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-        };
+        $visitor = new EventRecordingVisitor(
+            recordObject: false,
+            recordSeparator: false,
+            recordComment: false,
+            recordError: false,
+        );
 
         JsoncParser::visit('[]', $visitor);
 
-        expect($events)->toBe([
+        expect($visitor->events)->toBe([
             ['onArrayBegin', 0, []],
             ['onArrayEnd', 1],
         ]);
     });
 
     test('visits array with values', function () {
-        /** @var array<array<mixed>> $events */
-        $events = [];
-
-        $visitor = new class ($events) implements JsonVisitor {
-            /**
-             * @param array<array<mixed>> $events
-             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
-             */
-            public function __construct(private array &$events)
-            {
-            }
-
-            public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                return null;
-            }
-            public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-            }
-            public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-            public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
-            {
-                $this->events[] = ['onArrayBegin', $offset, $pathSupplier()];
-                return null;
-            }
-            public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-                $this->events[] = ['onArrayEnd', $offset];
-            }
-            public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
-            {
-                $this->events[] = ['onLiteralValue', $value, $pathSupplier()];
-            }
-            public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-            public function onComment(int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-            public function onError(ParseErrorCode $error, int $offset, int $length, int $startLine, int $startCharacter): void
-            {
-            }
-        };
+        $visitor = new EventRecordingVisitor(
+            recordObject: false,
+            recordSeparator: false,
+            recordComment: false,
+            recordError: false,
+        );
 
         JsoncParser::visit('[ true, null ]', $visitor);
 
-        expect($events)->toBe([
+        expect($visitor->events)->toBe([
             ['onArrayBegin', 0, []],
             ['onLiteralValue', true, [0]],
             ['onLiteralValue', null, [1]],
