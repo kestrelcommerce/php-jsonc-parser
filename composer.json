@@ -4,6 +4,12 @@
     "type": "library",
     "license": "MIT",
     "keywords": ["json", "jsonc", "parser", "scanner", "comments", "json-with-comments"],
+    "homepage": "https://github.com/kestrelwp/php-jsonc-parser",
+    "readme": "README.md",
+    "support": {
+        "issues": "https://github.com/kestrelwp/php-jsonc-parser/issues",
+        "source": "https://github.com/kestrelwp/php-jsonc-parser"
+    },
     "authors": [
         {
             "name": "Kestrel WP",

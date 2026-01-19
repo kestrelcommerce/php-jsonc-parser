@@ -127,12 +127,30 @@ class PropertyCounterVisitor implements JsonVisitor
     }
 
     // Required but unused methods
-    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
+    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
 }
 
 $json = '{
@@ -191,13 +209,34 @@ class EmailExtractorVisitor implements JsonVisitor
     }
 
     // Required methods
-    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
+    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
 }
 
 $json = '{
@@ -255,14 +294,38 @@ class RequiredFieldsValidator implements JsonVisitor
     }
 
     // Required methods
-    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
+    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
 }
 
 $json = '{
@@ -314,14 +377,38 @@ class FirstValueFinder implements JsonVisitor
     }
 
     // Required methods
-    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null { return null; }
-    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
-    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null { return null; }
+    public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
+    {
+        return null;
+    }
+    public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onSeparator(string $character, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onComment(int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
+    public function onError(int $error, int $offset, int $length, int $startLine, int $startCharacter): bool|null
+    {
+        return null;
+    }
 }
 
 $largeJson = '{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}';

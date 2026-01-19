@@ -2,7 +2,9 @@
 
 A PHP 8.4+ port of [Microsoft's node-jsonc-parser](https://github.com/microsoft/node-jsonc-parser) - a scanner and fault-tolerant parser for JSON with Comments (JSONC).
 
-[![Tests](https://img.shields.io/badge/tests-118%20passing-brightgreen)](https://github.com/kestrelwp/php-jsonc-parser)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/kestrelwp/php-jsonc-parser.svg?style=flat-square)](https://packagist.org/packages/kestrelwp/php-jsonc-parser)
+[![Tests](https://github.com/kestrelwp/php-jsonc-parser/actions/workflows/tests.yml/badge.svg)](https://github.com/kestrelwp/php-jsonc-parser/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/kestrelwp/php-jsonc-parser.svg?style=flat-square)](https://packagist.org/packages/kestrelwp/php-jsonc-parser)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.4-blue)](https://php.net)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
