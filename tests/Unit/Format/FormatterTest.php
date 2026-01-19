@@ -27,8 +27,8 @@ function formatJson(string $content, string $expected, bool $insertSpaces = true
     $options = new FormattingOptions(
         tabSize: 2,
         insertSpaces: $insertSpaces,
-        insertFinalNewline: $insertFinalNewline,
         eol: "\n",
+        insertFinalNewline: $insertFinalNewline,
         keepLines: $keepLines
     );
 

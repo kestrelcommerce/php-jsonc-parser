@@ -39,8 +39,8 @@ function assertModifyEdits(string $content, array $edits, string $expected): voi
 function getFormattingOptions(): FormattingOptions
 {
     return new FormattingOptions(
-        insertSpaces: true,
         tabSize: 2,
+        insertSpaces: true,
         eol: "\n",
         keepLines: false
     );
