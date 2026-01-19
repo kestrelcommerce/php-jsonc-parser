@@ -74,7 +74,7 @@ interface JsonVisitor
      * @param  int  $startLine  Line number (0-based)
      * @param  int  $startCharacter  Column number (0-based)
      * @param  Closure  $pathSupplier  Supplier function that returns the current JSONPath
-     * @return bool|void Return false to skip this array's items
+     * @return bool|null Return false to skip this array's items
      */
     public function onArrayBegin(
         int $offset,

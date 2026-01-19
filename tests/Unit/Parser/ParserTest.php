@@ -158,14 +158,14 @@ describe('parse: options', function () {
 describe('parseTree: literals', function () {
     test('parses boolean literals', function () {
         $tree = JsoncParser::parseTree('true');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Boolean);
         expect($tree->value)->toBe(true);
         expect($tree->offset)->toBe(0);
         expect($tree->length)->toBe(4);
 
         $tree = JsoncParser::parseTree('false');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Boolean);
         expect($tree->value)->toBe(false);
         expect($tree->length)->toBe(5);
@@ -173,7 +173,7 @@ describe('parseTree: literals', function () {
 
     test('parses null', function () {
         $tree = JsoncParser::parseTree('null');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Null);
         expect($tree->value)->toBe(null);
         expect($tree->length)->toBe(4);
@@ -181,13 +181,13 @@ describe('parseTree: literals', function () {
 
     test('parses numbers', function () {
         $tree = JsoncParser::parseTree('23');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Number);
         expect($tree->value)->toBe(23);
         expect($tree->length)->toBe(2);
 
         $tree = JsoncParser::parseTree('-1.93e-19');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Number);
         expect($tree->value)->toBe(-1.93e-19);
         expect($tree->length)->toBe(9);
@@ -195,7 +195,7 @@ describe('parseTree: literals', function () {
 
     test('parses strings', function () {
         $tree = JsoncParser::parseTree('"hello"');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::String);
         expect($tree->value)->toBe('hello');
         expect($tree->length)->toBe(7);
@@ -205,7 +205,7 @@ describe('parseTree: literals', function () {
 describe('parseTree: arrays', function () {
     test('parses empty array', function () {
         $tree = JsoncParser::parseTree('[]');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Array);
         expect($tree->offset)->toBe(0);
         expect($tree->length)->toBe(2);
@@ -214,9 +214,10 @@ describe('parseTree: arrays', function () {
 
     test('parses simple array', function () {
         $tree = JsoncParser::parseTree('[ 1 ]');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Array);
         expect($tree->length)->toBe(5);
+        assert($tree->children !== null);
         expect($tree->children)->toHaveCount(1);
         expect($tree->children[0]->type)->toBe(NodeType::Number);
         expect($tree->children[0]->value)->toBe(1);
@@ -224,8 +225,9 @@ describe('parseTree: arrays', function () {
 
     test('parses array with multiple values', function () {
         $tree = JsoncParser::parseTree('[ 1,"x"]');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Array);
+        assert($tree->children !== null);
         expect($tree->children)->toHaveCount(2);
         expect($tree->children[0]->type)->toBe(NodeType::Number);
         expect($tree->children[0]->value)->toBe(1);
@@ -235,8 +237,9 @@ describe('parseTree: arrays', function () {
 
     test('parses nested arrays', function () {
         $tree = JsoncParser::parseTree('[[]]');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Array);
+        assert($tree->children !== null);
         expect($tree->children)->toHaveCount(1);
         expect($tree->children[0]->type)->toBe(NodeType::Array);
         expect($tree->children[0]->children)->toBe([]);
@@ -246,7 +249,7 @@ describe('parseTree: arrays', function () {
 describe('parseTree: objects', function () {
     test('parses empty object', function () {
         $tree = JsoncParser::parseTree('{ }');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Object);
         expect($tree->offset)->toBe(0);
         expect($tree->length)->toBe(3);
@@ -255,8 +258,9 @@ describe('parseTree: objects', function () {
 
     test('parses simple object', function () {
         $tree = JsoncParser::parseTree('{ "val": 1 }');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
         expect($tree->type)->toBe(NodeType::Object);
+        assert($tree->children !== null);
         expect($tree->children)->toHaveCount(1);
 
         $prop = $tree->children[0];
@@ -264,6 +268,7 @@ describe('parseTree: objects', function () {
         expect($prop->offset)->toBe(2);
         expect($prop->length)->toBe(8);
         expect($prop->colonOffset)->toBe(7);
+        assert($prop->children !== null);
         expect($prop->children)->toHaveCount(2);
 
         expect($prop->children[0]->type)->toBe(NodeType::String);
@@ -274,10 +279,12 @@ describe('parseTree: objects', function () {
 
     test('verifies parent references', function () {
         $tree = JsoncParser::parseTree('{ "val": 1 }');
-        expect($tree)->not->toBeNull();
+        assert($tree !== null);
+        assert($tree->children !== null);
 
         $prop = $tree->children[0];
         expect($prop->parent)->toBe($tree);
+        assert($prop->children !== null);
         expect($prop->children[0]->parent)->toBe($prop);
         expect($prop->children[1]->parent)->toBe($prop);
     });
@@ -285,9 +292,14 @@ describe('parseTree: objects', function () {
 
 describe('visit: object', function () {
     test('visits empty object', function () {
+        /** @var array<array<mixed>> $events */
         $events = [];
 
         $visitor = new class ($events) implements JsonVisitor {
+            /**
+             * @param array<array<mixed>> $events
+             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
+             */
             public function __construct(private array &$events)
             {
             }
@@ -341,9 +353,14 @@ describe('visit: object', function () {
     });
 
     test('visits simple object', function () {
+        /** @var array<array<mixed>> $events */
         $events = [];
 
         $visitor = new class ($events) implements JsonVisitor {
+            /**
+             * @param array<array<mixed>> $events
+             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
+             */
             public function __construct(private array &$events)
             {
             }
@@ -402,9 +419,14 @@ describe('visit: object', function () {
 
 describe('visit: array', function () {
     test('visits empty array', function () {
+        /** @var array<array<mixed>> $events */
         $events = [];
 
         $visitor = new class ($events) implements JsonVisitor {
+            /**
+             * @param array<array<mixed>> $events
+             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
+             */
             public function __construct(private array &$events)
             {
             }
@@ -452,9 +474,14 @@ describe('visit: array', function () {
     });
 
     test('visits array with values', function () {
+        /** @var array<array<mixed>> $events */
         $events = [];
 
         $visitor = new class ($events) implements JsonVisitor {
+            /**
+             * @param array<array<mixed>> $events
+             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
+             */
             public function __construct(private array &$events)
             {
             }
@@ -509,11 +536,11 @@ describe('navigation: findNodeAtLocation', function () {
         $tree = JsoncParser::parseTree('{ "foo": "bar", "baz": 42 }');
 
         $node = JsoncParser::findNodeAtLocation($tree, ['foo']);
-        expect($node)->not->toBeNull();
+        assert($node !== null);
         expect(JsoncParser::getNodeValue($node))->toBe('bar');
 
         $node = JsoncParser::findNodeAtLocation($tree, ['baz']);
-        expect($node)->not->toBeNull();
+        assert($node !== null);
         expect(JsoncParser::getNodeValue($node))->toBe(42);
 
         $node = JsoncParser::findNodeAtLocation($tree, ['missing']);
@@ -524,7 +551,7 @@ describe('navigation: findNodeAtLocation', function () {
         $tree = JsoncParser::parseTree('{ "a": { "b": { "c": true } } }');
 
         $node = JsoncParser::findNodeAtLocation($tree, ['a', 'b', 'c']);
-        expect($node)->not->toBeNull();
+        assert($node !== null);
         expect(JsoncParser::getNodeValue($node))->toBe(true);
     });
 
@@ -532,11 +559,11 @@ describe('navigation: findNodeAtLocation', function () {
         $tree = JsoncParser::parseTree('[1, 2, 3]');
 
         $node = JsoncParser::findNodeAtLocation($tree, [0]);
-        expect($node)->not->toBeNull();
+        assert($node !== null);
         expect(JsoncParser::getNodeValue($node))->toBe(1);
 
         $node = JsoncParser::findNodeAtLocation($tree, [2]);
-        expect($node)->not->toBeNull();
+        assert($node !== null);
         expect(JsoncParser::getNodeValue($node))->toBe(3);
 
         $node = JsoncParser::findNodeAtLocation($tree, [5]);
@@ -549,6 +576,7 @@ describe('navigation: getNodePath', function () {
         $tree = JsoncParser::parseTree('{ "a": { "b": 1 } }');
         $node = JsoncParser::findNodeAtLocation($tree, ['a', 'b']);
 
+        assert($node !== null);
         expect(JsoncParser::getNodePath($node))->toBe(['a', 'b']);
     });
 
@@ -556,6 +584,7 @@ describe('navigation: getNodePath', function () {
         $tree = JsoncParser::parseTree('[[1, 2], [3, 4]]');
         $node = JsoncParser::findNodeAtLocation($tree, [1, 0]);
 
+        assert($node !== null);
         expect(JsoncParser::getNodePath($node))->toBe([1, 0]);
     });
 });

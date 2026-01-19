@@ -75,7 +75,7 @@ final class StringIntern
      */
     private static function initializeSpacesCache(): void
     {
-        if (empty(self::$cachedSpaces)) {
+        if (self::$cachedSpaces === []) {
             for ($i = 0; $i < 20; $i++) {
                 self::$cachedSpaces[$i] = str_repeat(' ', $i);
             }

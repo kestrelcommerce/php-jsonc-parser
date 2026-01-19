@@ -27,7 +27,7 @@ final class StringHelper
 
         $code = mb_ord($char, 'UTF-8');
 
-        return is_int($code) !== false ? $code : 0;
+        return $code !== false ? $code : 0;
     }
 
     /**
@@ -83,7 +83,8 @@ final class StringHelper
      */
     public static function fromCharCode(int $code): string
     {
-        return mb_chr($code, 'UTF-8') ?: '';
+        $char = mb_chr($code, 'UTF-8');
+        return $char !== false ? $char : '';
     }
 
     private function __construct()

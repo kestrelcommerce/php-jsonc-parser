@@ -70,6 +70,7 @@ final class Formatter
         $hasError = false;
 
         $newLinesAndIndent = function () use (&$numberLineBreaks, $eol, $indentValue, $initialIndentLevel, &$indentLevel, $eolFastPathSupported, $indentType): string {
+            /** @phpstan-ignore greater.alwaysFalse (captured by reference, modified in scanNext) */
             if ($numberLineBreaks > 1) {
                 return str_repeat($eol, $numberLineBreaks) . str_repeat($indentValue, $initialIndentLevel + $indentLevel);
             }

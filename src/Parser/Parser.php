@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kestrel\JsoncParser\Parser;
 
+use Kestrel\JsoncParser\Scanner\JsonScanner;
 use Kestrel\JsoncParser\Scanner\Scanner;
 use Kestrel\JsoncParser\Scanner\SyntaxKind;
 
@@ -29,10 +30,17 @@ final class Parser
         $isArray = false; // Track if current parent is an array (true) or object (false)
 
         $visitor = new class ($errors, $currentParent, $currentProperty, $parentStack, $isArray) implements JsonVisitor {
+            /**
+             * @param array<ParseError> $errors
+             * @param array<mixed> $currentParent
+             * @param string|int|null $currentProperty
+             * @param array<array{0: array<mixed>, 1: string|int|null, 2: bool}> $parentStack
+             */
             public function __construct(
+                /** @phpstan-ignore property.onlyWritten (read via reference) */
                 private array &$errors,
                 private array &$currentParent,
-                private mixed &$currentProperty,
+                private string|int|null &$currentProperty,
                 private array &$parentStack,
                 private bool &$isArray
             ) {
@@ -46,6 +54,7 @@ final class Parser
                 if ($this->isArray) {
                     $this->currentParent[] = &$object;
                 } else {
+                    /** @phpstan-ignore offsetAccess.invalidOffset */
                     $this->currentParent[$this->currentProperty] = &$object;
                 }
 
@@ -67,9 +76,11 @@ final class Parser
             {
                 // Pop parent context
                 $context = array_pop($this->parentStack);
-                $this->currentParent = &$context[0];
-                $this->currentProperty = $context[1];
-                $this->isArray = $context[2];
+                if ($context !== null) {
+                    $this->currentParent = &$context[0];
+                    $this->currentProperty = $context[1];
+                    $this->isArray = $context[2];
+                }
             }
 
             public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
@@ -80,6 +91,7 @@ final class Parser
                 if ($this->isArray) {
                     $this->currentParent[] = &$array;
                 } else {
+                    /** @phpstan-ignore offsetAccess.invalidOffset */
                     $this->currentParent[$this->currentProperty] = &$array;
                 }
 
@@ -96,9 +108,11 @@ final class Parser
             {
                 // Pop parent context
                 $context = array_pop($this->parentStack);
-                $this->currentParent = &$context[0];
-                $this->currentProperty = $context[1];
-                $this->isArray = $context[2];
+                if ($context !== null) {
+                    $this->currentParent = &$context[0];
+                    $this->currentProperty = $context[1];
+                    $this->isArray = $context[2];
+                }
             }
 
             public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
@@ -106,6 +120,7 @@ final class Parser
                 if ($this->isArray) {
                     $this->currentParent[] = $value;
                 } else {
+                    /** @phpstan-ignore offsetAccess.invalidOffset */
                     $this->currentParent[$this->currentProperty] = $value;
                 }
             }
@@ -140,66 +155,99 @@ final class Parser
      */
     public static function parseTree(string $text, array &$errors = [], ?ParseOptions $options = null): ?Node
     {
-        // Use stdClass for mutable node during construction (like TypeScript)
-        $currentParent = (object)['type' => 'array', 'offset' => -1, 'length' => -1, 'children' => []];
+        // Use MutableNode for tree construction
+        $currentParent = new MutableNode('array', -1, -1);
 
         $ensurePropertyComplete = function (int $endOffset) use (&$currentParent): void {
-            if ($currentParent->type === 'property') {
+            if ($currentParent->type === 'property' && $currentParent->parent !== null) {
                 $currentParent->length = $endOffset - $currentParent->offset;
                 $currentParent = $currentParent->parent;
             }
         };
 
-        $onValue = function (object $valueNode) use (&$currentParent): object {
+        $onValue = function (MutableNode $valueNode) use (&$currentParent): MutableNode {
             $currentParent->children[] = $valueNode;
             return $valueNode;
         };
 
         $visitor = new class ($onValue, $ensurePropertyComplete, $errors, $currentParent) implements JsonVisitor {
+            /** @var \Closure(MutableNode): MutableNode */
+            private \Closure $onValue;
+            /** @var \Closure(int): void */
+            private \Closure $ensurePropertyComplete;
+            /**
+             * @var array<ParseError>
+             * @phpstan-ignore property.onlyWritten (property is accessed via reference binding)
+             */
+            private array $errors;
+            private MutableNode $currentParent;
+
+            /**
+             * @param \Closure(MutableNode): MutableNode $onValue
+             * @param \Closure(int): void $ensurePropertyComplete
+             * @param array<ParseError> $errors
+             */
             public function __construct(
-                private \Closure $onValue,
-                private \Closure $ensurePropertyComplete,
-                private array &$errors,
-                private object &$currentParent
+                \Closure $onValue,
+                \Closure $ensurePropertyComplete,
+                array &$errors,
+                MutableNode &$currentParent
             ) {
+                $this->onValue = $onValue;
+                $this->ensurePropertyComplete = $ensurePropertyComplete;
+                $this->errors = &$errors;
+                $this->currentParent = &$currentParent;
             }
 
             public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
             {
-                $this->currentParent = ($this->onValue)((object)['type' => 'object', 'offset' => $offset, 'length' => -1, 'parent' => $this->currentParent, 'children' => []]);
+                $node = new MutableNode('object', $offset, -1, $this->currentParent);
+                $this->currentParent = ($this->onValue)($node);
                 return null;
             }
 
             public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
             {
-                $this->currentParent = ($this->onValue)((object)['type' => 'property', 'offset' => $offset, 'length' => -1, 'parent' => $this->currentParent, 'children' => []]);
-                $this->currentParent->children[] = (object)['type' => 'string', 'value' => $property, 'offset' => $offset, 'length' => $length, 'parent' => $this->currentParent];
+                $propertyNode = new MutableNode('property', $offset, -1, $this->currentParent);
+                $this->currentParent = ($this->onValue)($propertyNode);
+
+                // Add the property key as first child
+                $keyNode = new MutableNode('string', $offset, $length, $this->currentParent);
+                $keyNode->value = $property;
+                $this->currentParent->children[] = $keyNode;
             }
 
             public function onObjectEnd(int $offset, int $length, int $startLine, int $startCharacter): void
             {
                 ($this->ensurePropertyComplete)($offset + $length);
                 $this->currentParent->length = $offset + $length - $this->currentParent->offset;
-                $this->currentParent = $this->currentParent->parent;
+                if ($this->currentParent->parent !== null) {
+                    $this->currentParent = $this->currentParent->parent;
+                }
                 ($this->ensurePropertyComplete)($offset + $length);
             }
 
             public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
             {
-                $this->currentParent = ($this->onValue)((object)['type' => 'array', 'offset' => $offset, 'length' => -1, 'parent' => $this->currentParent, 'children' => []]);
+                $node = new MutableNode('array', $offset, -1, $this->currentParent);
+                $this->currentParent = ($this->onValue)($node);
                 return null;
             }
 
             public function onArrayEnd(int $offset, int $length, int $startLine, int $startCharacter): void
             {
                 $this->currentParent->length = $offset + $length - $this->currentParent->offset;
-                $this->currentParent = $this->currentParent->parent;
+                if ($this->currentParent->parent !== null) {
+                    $this->currentParent = $this->currentParent->parent;
+                }
                 ($this->ensurePropertyComplete)($offset + $length);
             }
 
             public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
             {
-                ($this->onValue)((object)['type' => self::getNodeType($value), 'value' => $value, 'offset' => $offset, 'length' => $length, 'parent' => $this->currentParent]);
+                $node = new MutableNode(self::getNodeType($value), $offset, $length, $this->currentParent);
+                $node->value = $value;
+                ($this->onValue)($node);
                 ($this->ensurePropertyComplete)($offset + $length);
             }
 
@@ -238,60 +286,13 @@ final class Parser
 
         self::visit($text, $visitor, $options);
 
-        // Convert mutable stdClass tree to readonly Node objects
+        // Convert mutable tree to readonly Node objects
         $result = $currentParent->children[0] ?? null;
         if ($result === null) {
             return null;
         }
 
-        // Two-pass conversion: first without parents, then add parents
-        return self::objectToNodeWithParents($result, null);
-    }
-
-    /**
-     * Convert stdClass to Node with correct parent references
-     */
-    private static function objectToNodeWithParents(object $nodeObj, ?Node $parent): Node
-    {
-        $type = match ($nodeObj->type) {
-            'object' => NodeType::Object,
-            'array' => NodeType::Array,
-            'property' => NodeType::Property,
-            'string' => NodeType::String,
-            'number' => NodeType::Number,
-            'boolean' => NodeType::Boolean,
-            'null' => NodeType::Null,
-            default => NodeType::Null,
-        };
-
-        // Determine initial children value
-        $initialChildren = null;
-        if (isset($nodeObj->children) && is_array($nodeObj->children)) {
-            // Arrays and objects have children array (even if empty)
-            $initialChildren = [];
-        }
-
-        // Create node
-        $node = new Node(
-            $type,
-            $nodeObj->offset,
-            $nodeObj->length,
-            $nodeObj->value ?? null,
-            $nodeObj->colonOffset ?? null,
-            $parent,
-            $initialChildren
-        );
-
-        // Convert children if present
-        if ($initialChildren !== null && !empty($nodeObj->children)) {
-            $children = [];
-            foreach ($nodeObj->children as $child) {
-                $children[] = self::objectToNodeWithParents($child, $node);
-            }
-            $node->children = $children;
-        }
-
-        return $node;
+        return $result->toNode(null);
     }
 
     /**
@@ -311,6 +312,7 @@ final class Parser
         $suppressedCallbacks = 0;
 
         $onValue = function (mixed $value) use (&$jsonPath, $visitor, $scanner, &$suppressedCallbacks): void {
+            // @phpstan-ignore greater.alwaysFalse (PHPStan doesn't track that $suppressedCallbacks is modified via reference before closure is called)
             if ($suppressedCallbacks > 0) {
                 $suppressedCallbacks--;
             } else {
@@ -386,10 +388,16 @@ final class Parser
         $isAtPropertyKey = false;
 
         $visitor = new class ($position, $path, $previousNode, $isAtPropertyKey) implements JsonVisitor {
+            /**
+             * @param array<string|int> $path
+             */
             public function __construct(
                 private int $position,
+                /** @phpstan-ignore property.onlyWritten */
                 private array &$path,
+                /** @phpstan-ignore property.onlyWritten */
                 private ?Node &$previousNode,
+                /** @phpstan-ignore property.onlyWritten */
                 private bool &$isAtPropertyKey
             ) {
             }
@@ -397,7 +405,9 @@ final class Parser
             public function onObjectBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
             {
                 if ($offset < $this->position && $offset + $length >= $this->position) {
-                    $this->path = $pathSupplier();
+                    /** @var array<string|int> $pathResult */
+                    $pathResult = $pathSupplier();
+                    $this->path = $pathResult;
                     return null;
                 }
                 return false;
@@ -406,7 +416,9 @@ final class Parser
             public function onObjectProperty(string $property, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
             {
                 if ($offset <= $this->position && $offset + $length > $this->position) {
-                    $this->path = $pathSupplier();
+                    /** @var array<string|int> $pathResult */
+                    $pathResult = $pathSupplier();
+                    $this->path = $pathResult;
                     $this->isAtPropertyKey = true;
                 }
             }
@@ -419,7 +431,9 @@ final class Parser
             public function onArrayBegin(int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): bool|null
             {
                 if ($offset < $this->position && $offset + $length >= $this->position) {
-                    $this->path = $pathSupplier();
+                    /** @var array<string|int> $pathResult */
+                    $pathResult = $pathSupplier();
+                    $this->path = $pathResult;
                     return null;
                 }
                 return false;
@@ -433,7 +447,9 @@ final class Parser
             public function onLiteralValue(mixed $value, int $offset, int $length, int $startLine, int $startCharacter, \Closure $pathSupplier): void
             {
                 if ($offset <= $this->position && $offset + $length > $this->position) {
-                    $this->path = $pathSupplier();
+                    /** @var array<string|int> $pathResult */
+                    $pathResult = $pathSupplier();
+                    $this->path = $pathResult;
                     // Store as a simple value node for previousNode
                     $this->previousNode = new Node(
                         is_string($value) ? NodeType::String :
@@ -560,7 +576,7 @@ final class Parser
 
         if ($node->parent->type === NodeType::Property) {
             $keyNode = $node->parent->children[0] ?? null;
-            if ($keyNode !== null) {
+            if ($keyNode !== null && is_string($keyNode->value)) {
                 $path[] = $keyNode->value;
             }
         } elseif ($node->parent->type === NodeType::Array) {
@@ -592,10 +608,12 @@ final class Parser
             ),
             NodeType::Object => array_reduce(
                 $node->children ?? [],
-                function ($acc, Node $propertyNode) {
+                /** @param array<string, mixed> $acc */
+                function (array $acc, Node $propertyNode): array {
                     if ($propertyNode->type === NodeType::Property &&
                         $propertyNode->children !== null &&
                         count($propertyNode->children) === 2) {
+                        /** @var string $key */
                         $key = $propertyNode->children[0]->value;
                         $value = self::getNodeValue($propertyNode->children[1]);
                         $acc[$key] = $value;
@@ -609,8 +627,11 @@ final class Parser
         };
     }
 
+    /**
+     * @param array<string|int> $jsonPath
+     */
     private static function parseValue(
-        $scanner,
+        JsonScanner $scanner,
         JsonVisitor $visitor,
         \Closure $onValue,
         array &$jsonPath,
@@ -631,7 +652,10 @@ final class Parser
         };
     }
 
-    private static function parseArray($scanner, JsonVisitor $visitor, \Closure $onValue, array &$jsonPath, int &$suppressedCallbacks, ParseOptions $options): mixed
+    /**
+     * @param array<string|int> $jsonPath
+     */
+    private static function parseArray(JsonScanner $scanner, JsonVisitor $visitor, \Closure $onValue, array &$jsonPath, int &$suppressedCallbacks, ParseOptions $options): mixed
     {
         $pathSupplier = fn () => $jsonPath;
 
@@ -670,7 +694,8 @@ final class Parser
                     break;
                 }
                 $needsComma = false;
-                $jsonPath[count($jsonPath) - 1]++;
+                $lastIndex = count($jsonPath) - 1;
+                $jsonPath[$lastIndex] = (int) $jsonPath[$lastIndex] + 1;
                 continue;
             }
 
@@ -703,7 +728,10 @@ final class Parser
         return null;
     }
 
-    private static function parseObject($scanner, JsonVisitor $visitor, \Closure $onValue, array &$jsonPath, int &$suppressedCallbacks, ParseOptions $options): mixed
+    /**
+     * @param array<string|int> $jsonPath
+     */
+    private static function parseObject(JsonScanner $scanner, JsonVisitor $visitor, \Closure $onValue, array &$jsonPath, int &$suppressedCallbacks, ParseOptions $options): mixed
     {
         $pathSupplier = fn () => $jsonPath;
 
@@ -806,7 +834,7 @@ final class Parser
         return null;
     }
 
-    private static function parseLiteral($scanner, JsonVisitor $visitor, \Closure $onValue, ParseOptions $options, mixed $value = '__USE_SCANNER_VALUE__'): mixed
+    private static function parseLiteral(JsonScanner $scanner, JsonVisitor $visitor, \Closure $onValue, ParseOptions $options, mixed $value = '__USE_SCANNER_VALUE__'): mixed
     {
         if ($value === '__USE_SCANNER_VALUE__') {
             $value = $scanner->getTokenValue();
@@ -816,7 +844,7 @@ final class Parser
         return null;
     }
 
-    private static function parseNumericLiteral($scanner, JsonVisitor $visitor, \Closure $onValue, ParseOptions $options): mixed
+    private static function parseNumericLiteral(JsonScanner $scanner, JsonVisitor $visitor, \Closure $onValue, ParseOptions $options): mixed
     {
         $value = (float) $scanner->getTokenValue();
         if (floor($value) === $value) {
@@ -827,7 +855,7 @@ final class Parser
         return null;
     }
 
-    private static function scanNext($scanner, ParseOptions $options, ?JsonVisitor $visitor = null): void
+    private static function scanNext(JsonScanner $scanner, ParseOptions $options, ?JsonVisitor $visitor = null): void
     {
         while (true) {
             $token = $scanner->scan();
@@ -842,7 +870,6 @@ final class Parser
                     \Kestrel\JsoncParser\Scanner\ScanError::UnexpectedEndOfString => ParseErrorCode::UnexpectedEndOfString,
                     \Kestrel\JsoncParser\Scanner\ScanError::UnexpectedEndOfComment => $options->disallowComments ? null : ParseErrorCode::UnexpectedEndOfComment,
                     \Kestrel\JsoncParser\Scanner\ScanError::InvalidCharacter => ParseErrorCode::InvalidCharacter,
-                    default => null,
                 };
 
                 if ($errorCode !== null) {
@@ -882,7 +909,7 @@ final class Parser
         }
     }
 
-    private static function handleError(JsonVisitor $visitor, $scanner, ParseErrorCode $error): void
+    private static function handleError(JsonVisitor $visitor, JsonScanner $scanner, ParseErrorCode $error): void
     {
         $visitor->onError(
             $error,
@@ -893,7 +920,7 @@ final class Parser
         );
     }
 
-    private static function handleUnexpectedToken($scanner, JsonVisitor $visitor, ParseOptions $options): mixed
+    private static function handleUnexpectedToken(JsonScanner $scanner, JsonVisitor $visitor, ParseOptions $options): mixed
     {
         self::handleError($visitor, $scanner, match ($scanner->getToken()) {
             SyntaxKind::CloseBracketToken => ParseErrorCode::ValueExpected,

@@ -8,3 +8,4 @@ parameters:
         - tests
     strictRules:
         allRules: true
+    treatPhpDocTypesAsCertain: false

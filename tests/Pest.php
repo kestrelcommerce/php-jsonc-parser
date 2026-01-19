@@ -7,6 +7,9 @@ use Kestrel\JsoncParser\Scanner\SyntaxKind;
 use Kestrel\JsoncParser\Scanner\ScanError;
 use Kestrel\JsoncParser\Parser\ParseOptions;
 use Kestrel\JsoncParser\Parser\Node;
+use Kestrel\JsoncParser\Parser\JsonVisitor;
+use Kestrel\JsoncParser\Parser\ParseError;
+use Kestrel\JsoncParser\Edit\Edit;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,19 +62,21 @@ function assertInvalidParse(string $input, mixed $expected, ?ParseOptions $optio
 
 /**
  * Assert that parsing the given input as a tree produces the expected node structure
+ *
+ * @param array<ParseError> $expectedErrors
  */
 function assertTree(string $input, mixed $expected, array $expectedErrors = []): void
 {
     $errors = [];
     $actual = JsoncParser::parseTree($input, $errors);
 
-    if (!empty($expectedErrors)) {
+    if ($expectedErrors !== []) {
         expect(count($errors))->toBe(count($expectedErrors));
     }
 
     // Verify parent references
-    $checkParent = function (?Node $node) use (&$checkParent) {
-        if ($node?->children) {
+    $checkParent = function (?Node $node) use (&$checkParent): void {
+        if ($node !== null && $node->children !== null && $node->children !== []) {
             foreach ($node->children as $child) {
                 expect($child->parent)->toBe($node);
                 $checkParent($child);
@@ -88,7 +93,7 @@ function assertTree(string $input, mixed $expected, array $expectedErrors = []):
 /**
  * Assert that visiting produces the expected result
  */
-function assertVisit(string $input, $visitor, mixed $expected, ?ParseOptions $options = null): void
+function assertVisit(string $input, JsonVisitor $visitor, mixed $expected, ?ParseOptions $options = null): void
 {
     $actual = JsoncParser::visit($input, $visitor, $options);
     expect($actual)->toEqual($expected);
@@ -96,6 +101,8 @@ function assertVisit(string $input, $visitor, mixed $expected, ?ParseOptions $op
 
 /**
  * Apply edits and assert the result
+ *
+ * @param array<Edit> $edits
  */
 function assertEdit(string $input, array $edits, string $expected): void
 {

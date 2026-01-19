@@ -85,20 +85,28 @@ final class Editor
             if ($isDelete) {
                 throw new \Exception('Cannot delete in empty document');
             }
+            $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($encoded === false) {
+                throw new \Exception('Failed to encode value as JSON');
+            }
             return self::withFormatting($text, new Edit(
-                $root ? $root->offset : 0,
-                $root ? $root->length : 0,
-                json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                $root !== null ? $root->offset : 0,
+                $root !== null ? $root->length : 0,
+                $encoded
             ), $options);
         } elseif ($parent->type === NodeType::Object && is_string($lastSegment) && is_array($parent->children)) {
             $existing = Parser::findNodeAtLocation($parent, [$lastSegment]);
             if ($existing !== null) {
                 if ($isDelete) {
                     // Delete
-                    if (!$existing->parent) {
+                    if ($existing->parent === null) {
                         throw new \Exception('Malformed AST');
                     }
-                    $propertyIndex = array_search($existing->parent, $parent->children, true);
+                    $searchResult = array_search($existing->parent, $parent->children, true);
+                    if ($searchResult === false) {
+                        throw new \Exception('Malformed AST: property not found in parent');
+                    }
+                    $propertyIndex = (int) $searchResult;
                     $removeBegin = 0;
                     $removeEnd = $existing->parent->offset + $existing->parent->length;
 
@@ -117,10 +125,14 @@ final class Editor
                     return self::withFormatting($text, new Edit($removeBegin, $removeEnd - $removeBegin, ''), $options);
                 } else {
                     // Set value of existing property
+                    $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    if ($encoded === false) {
+                        throw new \Exception('Failed to encode value as JSON');
+                    }
                     return self::withFormatting($text, new Edit(
                         $existing->offset,
                         $existing->length,
-                        json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                        $encoded
                     ), $options);
                 }
             } else {
@@ -128,10 +140,16 @@ final class Editor
                     // Delete: property does not exist, nothing to do
                     return [];
                 }
-                $newProperty = json_encode($lastSegment, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ': ' .
-                               json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $encodedKey = json_encode($lastSegment, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $encodedValue = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if ($encodedKey === false || $encodedValue === false) {
+                    throw new \Exception('Failed to encode value as JSON');
+                }
+                $newProperty = $encodedKey . ': ' . $encodedValue;
+                /** @var array<string> $propertyNames */
+                $propertyNames = array_map(fn ($p) => $p->children[0]->value ?? '', $parent->children);
                 $index = $options->getInsertionIndex !== null
-                    ? ($options->getInsertionIndex)(array_map(fn ($p) => $p->children[0]->value, $parent->children))
+                    ? ($options->getInsertionIndex)($propertyNames)
                     : count($parent->children);
 
                 $edit = null;
@@ -150,6 +168,9 @@ final class Editor
             if ($insertIndex === -1) {
                 // Insert
                 $newProperty = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if ($newProperty === false) {
+                    throw new \Exception('Failed to encode value as JSON');
+                }
                 $edit = null;
                 if (count($parent->children) === 0) {
                     $edit = new Edit($parent->offset + 1, 0, $newProperty);
@@ -158,7 +179,7 @@ final class Editor
                     $edit = new Edit($previous->offset + $previous->length, 0, ',' . $newProperty);
                 }
                 return self::withFormatting($text, $edit, $options);
-            } elseif ($isDelete && count($parent->children) >= 0) {
+            } elseif ($isDelete && count($parent->children) > 0) {
                 // Removal
                 $removalIndex = $lastSegment;
                 $toRemove = $parent->children[$removalIndex];
@@ -177,9 +198,12 @@ final class Editor
                 }
                 return self::withFormatting($text, $edit, $options);
             } elseif (!$isDelete) {
-                $edit = null;
                 $newProperty = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if ($newProperty === false) {
+                    throw new \Exception('Failed to encode value as JSON');
+                }
 
+                $edit = null;
                 if (!$options->isArrayInsertion && count($parent->children) > $lastSegment) {
                     $toModify = $parent->children[$lastSegment];
                     $edit = new Edit($toModify->offset, $toModify->length, $newProperty);
@@ -197,8 +221,7 @@ final class Editor
 
                 return self::withFormatting($text, $edit, $options);
             } else {
-                $operation = $isDelete ? 'remove' : ($options->isArrayInsertion ? 'insert' : 'modify');
-                throw new \Exception("Cannot {$operation} array index {$insertIndex} as length is not sufficient");
+                throw new \Exception("Cannot remove array index {$insertIndex} as length is not sufficient");
             }
         } else {
             $segmentType = is_int($lastSegment) ? 'property' : 'index';
