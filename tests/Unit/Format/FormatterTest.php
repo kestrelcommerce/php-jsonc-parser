@@ -5,23 +5,30 @@ declare(strict_types=1);
 use Kestrel\JsoncParser\Format\Formatter;
 use Kestrel\JsoncParser\Format\FormattingOptions;
 use Kestrel\JsoncParser\Edit\Range;
+use Kestrel\JsoncParser\Util\StringHelper;
 
 /**
  * Format helper function
  * Formats content and applies edits, handles range markers (|)
+ * Uses StringHelper for UTF-8 safe string operations since edits use character offsets
  */
 function formatJson(string $content, string $expected, bool $insertSpaces = true, bool $insertFinalNewline = false, bool $keepLines = false): void
 {
     $range = null;
+    // Use strpos for range markers since | is ASCII and byte position works for finding it
     $rangeStart = strpos($content, '|');
     $rangeEnd = strrpos($content, '|');
 
     if ($rangeStart !== false && $rangeEnd !== false && $rangeStart !== $rangeEnd) {
-        // Remove the | markers and create range
-        $content = substr($content, 0, $rangeStart) .
-                   substr($content, $rangeStart + 1, $rangeEnd - $rangeStart - 1) .
-                   substr($content, $rangeEnd + 1);
-        $range = new Range($rangeStart, $rangeEnd - $rangeStart);
+        // Convert byte positions to character positions for proper range handling
+        $rangeStartChar = StringHelper::length(substr($content, 0, $rangeStart));
+        $rangeEndChar = StringHelper::length(substr($content, 0, $rangeEnd));
+        // Remove the | markers and create range (using character positions)
+        $content = StringHelper::substring($content, 0, $rangeStartChar) .
+                   StringHelper::substring($content, $rangeStartChar + 1, $rangeEndChar) .
+                   StringHelper::substring($content, $rangeEndChar + 1);
+        // Range length matches original formula: $rangeEnd - $rangeStart
+        $range = new Range($rangeStartChar, $rangeEndChar - $rangeStartChar);
     }
 
     $options = new FormattingOptions(
@@ -34,10 +41,10 @@ function formatJson(string $content, string $expected, bool $insertSpaces = true
 
     $edits = Formatter::format($content, $range, $options);
 
-    // Apply edits from end to beginning
+    // Apply edits from end to beginning using UTF-8 safe operations
     for ($i = count($edits) - 1; $i >= 0; $i--) {
         $edit = $edits[$i];
-        $content = substr($content, 0, $edit->offset) . $edit->content . substr($content, $edit->offset + $edit->length);
+        $content = StringHelper::substring($content, 0, $edit->offset) . $edit->content . StringHelper::substring($content, $edit->offset + $edit->length);
     }
 
     expect($content)->toBe($expected);
@@ -494,6 +501,136 @@ describe('Formatter', function () {
         $content = 'a 1 b 1 3 true';
 
         $expected = 'a 1 b 1 3 true';
+
+        formatJson($content, $expected);
+    });
+
+    // UTF-8 multibyte character tests
+
+    test('UTF-8 characters in keys', function () {
+        $content = '{"café" : "latte",  "日本語" : "test"}';
+
+        $expected = implode("\n", [
+            '{',
+            '  "café": "latte",',
+            '  "日本語": "test"',
+            '}'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('UTF-8 characters in values', function () {
+        $content = '{"greeting" : "こんにちは",  "emoji" : "🎉🎊🎈"}';
+
+        $expected = implode("\n", [
+            '{',
+            '  "greeting": "こんにちは",',
+            '  "emoji": "🎉🎊🎈"',
+            '}'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('mixed UTF-8 byte lengths', function () {
+        // Mix of 2-byte (é, ñ), 3-byte (日, €), and 4-byte (🎉) UTF-8 characters
+        $content = '{"café" : "€50",  "日本" : "🗾",  "señor" : "🎉"}';
+
+        $expected = implode("\n", [
+            '{',
+            '  "café": "€50",',
+            '  "日本": "🗾",',
+            '  "señor": "🎉"',
+            '}'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('nested objects with UTF-8', function () {
+        $content = '{"données" : {  "prénom" : "François", "âge"  : 30 }}';
+
+        $expected = implode("\n", [
+            '{',
+            '  "données": {',
+            '    "prénom": "François",',
+            '    "âge": 30',
+            '  }',
+            '}'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('arrays with UTF-8 content', function () {
+        $content = '["日本語",  "한국어",  "中文"]';
+
+        $expected = implode("\n", [
+            '[',
+            '  "日本語",',
+            '  "한국어",',
+            '  "中文"',
+            ']'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('range format with UTF-8 before range', function () {
+        $content = implode("\n", [
+            '{ "café": "☕",',
+            '|"target": [1,2,3]|',
+            '}'
+        ]);
+
+        $expected = implode("\n", [
+            '{ "café": "☕",',
+            '"target": [',
+            '  1,',
+            '  2,',
+            '  3',
+            ']',
+            '}'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('comments with UTF-8 content', function () {
+        $content = implode("\n", [
+            '{ ',
+            '// コメント (Japanese comment)',
+            '"key": "value"',
+            '}'
+        ]);
+
+        $expected = implode("\n", [
+            '{',
+            '  // コメント (Japanese comment)',
+            '  "key": "value"',
+            '}'
+        ]);
+
+        formatJson($content, $expected);
+    });
+
+    test('block comment with UTF-8', function () {
+        $content = implode("\n", [
+            '[{',
+            '        /* données françaises */     ',
+            '"prénom" : "Jean"',
+            '}]'
+        ]);
+
+        $expected = implode("\n", [
+            '[',
+            '  {',
+            '    /* données françaises */',
+            '    "prénom": "Jean"',
+            '  }',
+            ']'
+        ]);
 
         formatJson($content, $expected);
     });

@@ -8,6 +8,7 @@ use Kestrel\JsoncParser\Parser\Node;
 use Kestrel\JsoncParser\Parser\NodeType;
 use Kestrel\JsoncParser\Parser\Parser;
 use Kestrel\JsoncParser\Format\Formatter;
+use Kestrel\JsoncParser\Util\StringHelper;
 
 /**
  * JSON/JSONC Editor
@@ -246,15 +247,15 @@ final class Editor
         // Apply the edit
         $newText = self::applyEdit($text, $edit);
 
-        // Format the new text
+        // Format the new text - use character-based lengths for UTF-8 safety
         $begin = $edit->offset;
-        $end = $edit->offset + strlen($edit->content);
-        if ($edit->length === 0 || strlen($edit->content) === 0) {
+        $end = $edit->offset + StringHelper::length($edit->content);
+        if ($edit->length === 0 || StringHelper::length($edit->content) === 0) {
             // Insert or remove - extend to full lines
             while ($begin > 0 && !self::isEOL($newText, $begin - 1)) {
                 $begin--;
             }
-            while ($end < strlen($newText) && !self::isEOL($newText, $end)) {
+            while ($end < StringHelper::length($newText) && !self::isEOL($newText, $end)) {
                 $end++;
             }
         }
@@ -267,12 +268,12 @@ final class Editor
             $newText = self::applyEdit($newText, $formatEdit);
             $begin = min($begin, $formatEdit->offset);
             $end = max($end, $formatEdit->offset + $formatEdit->length);
-            $end += strlen($formatEdit->content) - $formatEdit->length;
+            $end += StringHelper::length($formatEdit->content) - $formatEdit->length;
         }
 
-        // Create a single edit with all changes
-        $editLength = strlen($text) - (strlen($newText) - $end) - $begin;
-        return [new Edit($begin, $editLength, substr($newText, $begin, $end - $begin))];
+        // Create a single edit with all changes - use character-based operations
+        $editLength = StringHelper::length($text) - (StringHelper::length($newText) - $end) - $begin;
+        return [new Edit($begin, $editLength, StringHelper::substring($newText, $begin, $end))];
     }
 
     /**
@@ -284,7 +285,8 @@ final class Editor
      */
     public static function applyEdit(string $text, Edit $edit): string
     {
-        return substr($text, 0, $edit->offset) . $edit->content . substr($text, $edit->offset + $edit->length);
+        // Use StringHelper for UTF-8 safe substring operations since offsets are character-based
+        return StringHelper::substring($text, 0, $edit->offset) . $edit->content . StringHelper::substring($text, $edit->offset + $edit->length);
     }
 
     /**
@@ -311,10 +313,10 @@ final class Editor
      */
     private static function isEOL(string $text, int $offset): bool
     {
-        if ($offset < 0 || $offset >= strlen($text)) {
+        if ($offset < 0 || $offset >= StringHelper::length($text)) {
             return false;
         }
-        $ch = $text[$offset];
+        $ch = StringHelper::charAt($text, $offset);
         return $ch === "\r" || $ch === "\n";
     }
 }

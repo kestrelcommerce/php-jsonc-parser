@@ -9,6 +9,7 @@ use Kestrel\JsoncParser\Edit\Range;
 use Kestrel\JsoncParser\Scanner\Scanner;
 use Kestrel\JsoncParser\Scanner\ScanError;
 use Kestrel\JsoncParser\Scanner\SyntaxKind;
+use Kestrel\JsoncParser\Util\StringHelper;
 
 /**
  * JSON/JSONC Formatter
@@ -29,7 +30,7 @@ final class Formatter
         $initialIndentLevel = 0;
         $formatTextStart = 0;
         $rangeStart = 0;
-        $rangeEnd = strlen($documentText);
+        $rangeEnd = StringHelper::length($documentText);
 
         if ($range !== null) {
             $rangeStart = $range->offset;
@@ -42,11 +43,11 @@ final class Formatter
             }
 
             $endOffset = $rangeEnd;
-            while ($endOffset < strlen($documentText) && !self::isEOL($documentText, $endOffset)) {
+            while ($endOffset < StringHelper::length($documentText) && !self::isEOL($documentText, $endOffset)) {
                 $endOffset++;
             }
 
-            $formatText = substr($documentText, $formatTextStart, $endOffset - $formatTextStart);
+            $formatText = StringHelper::substring($documentText, $formatTextStart, $endOffset);
             $initialIndentLevel = self::computeIndentLevel($formatText, $options);
         } else {
             $formatText = $documentText;
@@ -110,7 +111,7 @@ final class Formatter
         $addEdit = function (string $text, int $startOffset, int $endOffset) use (&$hasError, $range, $rangeEnd, $rangeStart, $documentText, &$editOperations): void {
             if (!$hasError &&
                 ($range === null || ($startOffset < $rangeEnd && $endOffset > $rangeStart)) &&
-                substr($documentText, $startOffset, $endOffset - $startOffset) !== $text) {
+                StringHelper::substring($documentText, $startOffset, $endOffset) !== $text) {
                 $editOperations[] = new Edit($startOffset, $endOffset - $startOffset, $text);
             }
         };
@@ -261,10 +262,10 @@ final class Formatter
      */
     private static function isEOL(string $text, int $offset): bool
     {
-        if ($offset < 0 || $offset >= strlen($text)) {
+        if ($offset < 0 || $offset >= StringHelper::length($text)) {
             return false;
         }
-        $ch = $text[$offset];
+        $ch = StringHelper::charAt($text, $offset);
         return $ch === "\r" || $ch === "\n";
     }
 
@@ -276,10 +277,10 @@ final class Formatter
         $i = 0;
         $nChars = 0;
         $tabSize = $options->tabSize;
-        $len = strlen($content);
+        $len = StringHelper::length($content);
 
         while ($i < $len) {
-            $ch = $content[$i];
+            $ch = StringHelper::charAt($content, $i);
             if ($ch === ' ') {
                 $nChars++;
             } elseif ($ch === "\t") {
@@ -298,11 +299,11 @@ final class Formatter
      */
     private static function getEOL(FormattingOptions $options, string $text): string
     {
-        $len = strlen($text);
+        $len = StringHelper::length($text);
         for ($i = 0; $i < $len; $i++) {
-            $ch = $text[$i];
+            $ch = StringHelper::charAt($text, $i);
             if ($ch === "\r") {
-                if ($i + 1 < $len && $text[$i + 1] === "\n") {
+                if ($i + 1 < $len && StringHelper::charAt($text, $i + 1) === "\n") {
                     return "\r\n";
                 }
                 return "\r";

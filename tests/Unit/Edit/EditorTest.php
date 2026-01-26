@@ -7,10 +7,12 @@ use Kestrel\JsoncParser\Edit\Editor;
 use Kestrel\JsoncParser\Edit\ModificationOptions;
 use Kestrel\JsoncParser\Edit\RemoveMarker;
 use Kestrel\JsoncParser\Format\FormattingOptions;
+use Kestrel\JsoncParser\Util\StringHelper;
 
 /**
  * Assert modification edits helper function
  * Verifies edits are valid and applies them
+ * Uses StringHelper for UTF-8 safe string operations since edits use character offsets
  *
  * @param array<Edit> $edits
  */
@@ -18,16 +20,17 @@ function assertModifyEdits(string $content, array $edits, string $expected): voi
 {
     expect($edits)->not->toBeNull();
 
-    $lastEditOffset = strlen($content);
+    $lastEditOffset = StringHelper::length($content);
     for ($i = count($edits) - 1; $i >= 0; $i--) {
         $edit = $edits[$i];
         expect($edit->offset)->toBeGreaterThanOrEqual(0);
         expect($edit->length)->toBeGreaterThanOrEqual(0);
-        expect($edit->offset + $edit->length)->toBeLessThanOrEqual(strlen($content));
+        expect($edit->offset + $edit->length)->toBeLessThanOrEqual(StringHelper::length($content));
         expect(is_string($edit->content))->toBeTrue();
         expect($lastEditOffset)->toBeGreaterThanOrEqual($edit->offset + $edit->length); // Ensure edits are ordered
         $lastEditOffset = $edit->offset;
-        $content = substr($content, 0, $edit->offset) . $edit->content . substr($content, $edit->offset + $edit->length);
+        // Use StringHelper::substring for UTF-8 safe operations since offsets are character-based
+        $content = StringHelper::substring($content, 0, $edit->offset) . $edit->content . StringHelper::substring($content, $edit->offset + $edit->length);
     }
 
     expect($content)->toBe($expected);
@@ -269,6 +272,74 @@ describe('Editor', function () {
         $content = "// This is a comment\n[\n  1,\n  \"foo\",\n  \"bar\"\n]";
         $edits = Editor::modify($content, [2], RemoveMarker::instance(), $modOptions);
         assertModifyEdits($content, $edits, "// This is a comment\n[\n  1,\n  \"foo\"\n]");
+    });
+
+    test('set property with UTF-8 multibyte characters in preceding key', function () {
+        $modOptions = getModOptions();
+
+        // UTF-8 characters before target key - tests character vs byte offset handling
+        $content = "{\n  \"café\": \"value1\",\n  \"target\": \"old\"\n}";
+        $edits = Editor::modify($content, ['target'], 'new', $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"café\": \"value1\",\n  \"target\": \"new\"\n}");
+    });
+
+    test('set property with UTF-8 multibyte characters in preceding value', function () {
+        $modOptions = getModOptions();
+
+        // UTF-8 value before target key
+        $content = "{\n  \"greeting\": \"こんにちは\",\n  \"target\": \"old\"\n}";
+        $edits = Editor::modify($content, ['target'], 'new', $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"greeting\": \"こんにちは\",\n  \"target\": \"new\"\n}");
+    });
+
+    test('set property with emoji characters', function () {
+        $modOptions = getModOptions();
+
+        // Emoji characters (4-byte UTF-8) before target
+        $content = "{\n  \"icon\": \"🎉🎊\",\n  \"target\": \"old\"\n}";
+        $edits = Editor::modify($content, ['target'], 'new', $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"icon\": \"🎉🎊\",\n  \"target\": \"new\"\n}");
+    });
+
+    test('insert property after UTF-8 content', function () {
+        $modOptions = getModOptions();
+
+        $content = "{\n  \"名前\": \"田中\"\n}";
+        $edits = Editor::modify($content, ['new_key'], 'value', $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"名前\": \"田中\",\n  \"new_key\": \"value\"\n}");
+    });
+
+    test('remove property after UTF-8 content', function () {
+        $modOptions = getModOptions();
+
+        $content = "{\n  \"emoji\": \"😀\",\n  \"remove_me\": \"value\"\n}";
+        $edits = Editor::modify($content, ['remove_me'], RemoveMarker::instance(), $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"emoji\": \"😀\"\n}");
+    });
+
+    test('modify array item after UTF-8 content', function () {
+        $modOptions = getModOptions();
+
+        $content = "{\n  \"title\": \"日本語テスト\",\n  \"items\": [1, 2, 3]\n}";
+        $edits = Editor::modify($content, ['items', 1], 99, $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"title\": \"日本語テスト\",\n  \"items\": [1, 99, 3]\n}");
+    });
+
+    test('set nested property with UTF-8 in path', function () {
+        $modOptions = getModOptions();
+
+        $content = "{\n  \"données\": {\n    \"valeur\": \"ancienne\"\n  }\n}";
+        $edits = Editor::modify($content, ['données', 'valeur'], 'nouvelle', $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"données\": {\n    \"valeur\": \"nouvelle\"\n  }\n}");
+    });
+
+    test('complex UTF-8 scenario with mixed characters', function () {
+        $modOptions = getModOptions();
+
+        // Mix of 2-byte (é), 3-byte (日), and 4-byte (🎉) UTF-8 characters
+        $content = "{\n  \"café\": \"☕\",\n  \"日本\": \"🗾\",\n  \"emoji\": \"🎉\",\n  \"target\": \"old\"\n}";
+        $edits = Editor::modify($content, ['target'], 'new', $modOptions);
+        assertModifyEdits($content, $edits, "{\n  \"café\": \"☕\",\n  \"日本\": \"🗾\",\n  \"emoji\": \"🎉\",\n  \"target\": \"new\"\n}");
     });
 
     test('set property without formatting', function () {
