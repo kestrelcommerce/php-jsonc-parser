@@ -13,7 +13,19 @@ use Kestrel\JsoncParser\Util\StringHelper;
  */
 final class Scanner implements JsonScanner
 {
-    private string $text;
+    /**
+     * The document split into individual characters, indexed by character offset.
+     *
+     * The scanner addresses text by character offset, not byte offset. Resolving
+     * such an offset against a UTF-8 string means walking it from the start, so
+     * doing that once per character makes scanning quadratic in the length of the
+     * document. Splitting once up front turns every subsequent access into an
+     * array lookup, at a memory cost of roughly 46x the source size.
+     *
+     * @var list<string>
+     */
+    private array $chars;
+
     private int $len;
     private int $pos = 0;
     private string $value = '';
@@ -40,10 +52,50 @@ final class Scanner implements JsonScanner
         string $text,
         private readonly bool $ignoreTrivia
     ) {
-        $this->text = $text;
-        $this->len = StringHelper::length($text);
+        $this->chars = mb_str_split($text, 1, 'UTF-8');
+        $this->len = count($this->chars);
         $this->token = SyntaxKind::Unknown;
         $this->scanError = ScanError::None;
+    }
+
+    /**
+     * Get the Unicode code point at a character offset, or 0 when out of bounds.
+     */
+    private function charCodeAt(int $pos): int
+    {
+        $char = $this->chars[$pos] ?? '';
+
+        if ($char === '') {
+            return 0;
+        }
+
+        // A single-byte UTF-8 character is its own code point, which covers
+        // essentially all of a JSON document's structure and keys.
+        if (strlen($char) === 1) {
+            return ord($char);
+        }
+
+        $code = mb_ord($char, 'UTF-8');
+
+        return $code !== false ? $code : 0;
+    }
+
+    /**
+     * Get the text between two character offsets, or to the end when $end is null.
+     */
+    private function substring(int $start, ?int $end = null): string
+    {
+        if ($end === null) {
+            return implode('', array_slice($this->chars, $start));
+        }
+
+        $length = $end - $start;
+
+        if ($length < 0) {
+            return '';
+        }
+
+        return implode('', array_slice($this->chars, $start, $length));
     }
 
     public function setPosition(int $pos): void
@@ -106,7 +158,7 @@ final class Scanner implements JsonScanner
         $value = 0;
 
         while ($digits < $count || !$exact) {
-            $ch = StringHelper::charCodeAt($this->text, $this->pos);
+            $ch = $this->charCodeAt($this->pos);
 
             if ($ch >= CC::DIGIT_0 && $ch <= CC::DIGIT_9) {
                 $value = $value * 16 + $ch - CC::DIGIT_0;
@@ -133,42 +185,42 @@ final class Scanner implements JsonScanner
     {
         $start = $this->pos;
 
-        if (StringHelper::charCodeAt($this->text, $this->pos) === CC::DIGIT_0) {
+        if ($this->charCodeAt($this->pos) === CC::DIGIT_0) {
             $this->pos++;
         } else {
             $this->pos++;
-            while ($this->pos < $this->len && $this->isDigit(StringHelper::charCodeAt($this->text, $this->pos))) {
+            while ($this->pos < $this->len && $this->isDigit($this->charCodeAt($this->pos))) {
                 $this->pos++;
             }
         }
 
-        if ($this->pos < $this->len && StringHelper::charCodeAt($this->text, $this->pos) === CC::DOT) {
+        if ($this->pos < $this->len && $this->charCodeAt($this->pos) === CC::DOT) {
             $this->pos++;
-            if ($this->pos < $this->len && $this->isDigit(StringHelper::charCodeAt($this->text, $this->pos))) {
+            if ($this->pos < $this->len && $this->isDigit($this->charCodeAt($this->pos))) {
                 $this->pos++;
-                while ($this->pos < $this->len && $this->isDigit(StringHelper::charCodeAt($this->text, $this->pos))) {
+                while ($this->pos < $this->len && $this->isDigit($this->charCodeAt($this->pos))) {
                     $this->pos++;
                 }
             } else {
                 $this->scanError = ScanError::UnexpectedEndOfNumber;
-                return StringHelper::substring($this->text, $start, $this->pos);
+                return $this->substring($start, $this->pos);
             }
         }
 
         $end = $this->pos;
         if ($this->pos < $this->len) {
-            $ch = StringHelper::charCodeAt($this->text, $this->pos);
+            $ch = $this->charCodeAt($this->pos);
             if ($ch === CC::UPPER_E || $ch === CC::LOWER_E) {
                 $this->pos++;
                 if ($this->pos < $this->len) {
-                    $ch = StringHelper::charCodeAt($this->text, $this->pos);
+                    $ch = $this->charCodeAt($this->pos);
                     if ($ch === CC::PLUS || $ch === CC::MINUS) {
                         $this->pos++;
                     }
                 }
-                if ($this->pos < $this->len && $this->isDigit(StringHelper::charCodeAt($this->text, $this->pos))) {
+                if ($this->pos < $this->len && $this->isDigit($this->charCodeAt($this->pos))) {
                     $this->pos++;
-                    while ($this->pos < $this->len && $this->isDigit(StringHelper::charCodeAt($this->text, $this->pos))) {
+                    while ($this->pos < $this->len && $this->isDigit($this->charCodeAt($this->pos))) {
                         $this->pos++;
                     }
                     $end = $this->pos;
@@ -178,7 +230,7 @@ final class Scanner implements JsonScanner
             }
         }
 
-        return StringHelper::substring($this->text, $start, $end);
+        return $this->substring($start, $end);
     }
 
     private function scanString(): string
@@ -188,21 +240,21 @@ final class Scanner implements JsonScanner
 
         while (true) {
             if ($this->pos >= $this->len) {
-                $result .= StringHelper::substring($this->text, $start, $this->pos);
+                $result .= $this->substring($start, $this->pos);
                 $this->scanError = ScanError::UnexpectedEndOfString;
                 break;
             }
 
-            $ch = StringHelper::charCodeAt($this->text, $this->pos);
+            $ch = $this->charCodeAt($this->pos);
 
             if ($ch === CC::DOUBLE_QUOTE) {
-                $result .= StringHelper::substring($this->text, $start, $this->pos);
+                $result .= $this->substring($start, $this->pos);
                 $this->pos++;
                 break;
             }
 
             if ($ch === CC::BACKSLASH) {
-                $result .= StringHelper::substring($this->text, $start, $this->pos);
+                $result .= $this->substring($start, $this->pos);
                 $this->pos++;
 
                 if ($this->pos >= $this->len) {
@@ -210,7 +262,7 @@ final class Scanner implements JsonScanner
                     break;
                 }
 
-                $ch2 = StringHelper::charCodeAt($this->text, $this->pos++);
+                $ch2 = $this->charCodeAt($this->pos++);
 
                 switch ($ch2) {
                     case CC::DOUBLE_QUOTE:
@@ -255,7 +307,7 @@ final class Scanner implements JsonScanner
 
             if ($ch >= 0 && $ch <= 0x1f) {
                 if ($this->isLineBreak($ch)) {
-                    $result .= StringHelper::substring($this->text, $start, $this->pos);
+                    $result .= $this->substring($start, $this->pos);
                     $this->scanError = ScanError::UnexpectedEndOfString;
                     break;
                 } else {
@@ -285,14 +337,14 @@ final class Scanner implements JsonScanner
             return $this->token = SyntaxKind::EOF;
         }
 
-        $code = StringHelper::charCodeAt($this->text, $this->pos);
+        $code = $this->charCodeAt($this->pos);
 
         // trivia: whitespace
         if ($this->isWhiteSpace($code)) {
             do {
                 $this->pos++;
                 $this->value .= StringHelper::fromCharCode($code);
-                $code = StringHelper::charCodeAt($this->text, $this->pos);
+                $code = $this->charCodeAt($this->pos);
             } while ($this->isWhiteSpace($code));
 
             return $this->token = SyntaxKind::Trivia;
@@ -302,7 +354,7 @@ final class Scanner implements JsonScanner
         if ($this->isLineBreak($code)) {
             $this->pos++;
             $this->value .= StringHelper::fromCharCode($code);
-            if ($code === CC::CARRIAGE_RETURN && StringHelper::charCodeAt($this->text, $this->pos) === CC::LINE_FEED) {
+            if ($code === CC::CARRIAGE_RETURN && $this->charCodeAt($this->pos) === CC::LINE_FEED) {
                 $this->pos++;
                 $this->value .= "\n";
             }
@@ -342,31 +394,31 @@ final class Scanner implements JsonScanner
             case CC::SLASH:
                 $start = $this->pos;
                 // Single-line comment
-                if (StringHelper::charCodeAt($this->text, $this->pos + 1) === CC::SLASH) {
+                if ($this->charCodeAt($this->pos + 1) === CC::SLASH) {
                     $this->pos += 2;
 
                     while ($this->pos < $this->len) {
-                        if ($this->isLineBreak(StringHelper::charCodeAt($this->text, $this->pos))) {
+                        if ($this->isLineBreak($this->charCodeAt($this->pos))) {
                             break;
                         }
                         $this->pos++;
                     }
 
-                    $this->value = StringHelper::substring($this->text, $start, $this->pos);
+                    $this->value = $this->substring($start, $this->pos);
                     return $this->token = SyntaxKind::LineCommentTrivia;
                 }
 
                 // Multi-line comment
-                if (StringHelper::charCodeAt($this->text, $this->pos + 1) === CC::ASTERISK) {
+                if ($this->charCodeAt($this->pos + 1) === CC::ASTERISK) {
                     $this->pos += 2;
 
                     $safeLength = $this->len - 1; // For lookahead
                     $commentClosed = false;
 
                     while ($this->pos < $safeLength) {
-                        $ch = StringHelper::charCodeAt($this->text, $this->pos);
+                        $ch = $this->charCodeAt($this->pos);
 
-                        if ($ch === CC::ASTERISK && StringHelper::charCodeAt($this->text, $this->pos + 1) === CC::SLASH) {
+                        if ($ch === CC::ASTERISK && $this->charCodeAt($this->pos + 1) === CC::SLASH) {
                             $this->pos += 2;
                             $commentClosed = true;
                             break;
@@ -375,7 +427,7 @@ final class Scanner implements JsonScanner
                         $this->pos++;
 
                         if ($this->isLineBreak($ch)) {
-                            if ($ch === CC::CARRIAGE_RETURN && StringHelper::charCodeAt($this->text, $this->pos) === CC::LINE_FEED) {
+                            if ($ch === CC::CARRIAGE_RETURN && $this->charCodeAt($this->pos) === CC::LINE_FEED) {
                                 $this->pos++;
                             }
                             $this->lineNumber++;
@@ -388,7 +440,7 @@ final class Scanner implements JsonScanner
                         $this->scanError = ScanError::UnexpectedEndOfComment;
                     }
 
-                    $this->value = StringHelper::substring($this->text, $start, $this->pos);
+                    $this->value = $this->substring($start, $this->pos);
                     return $this->token = SyntaxKind::BlockCommentTrivia;
                 }
 
@@ -401,7 +453,7 @@ final class Scanner implements JsonScanner
             case CC::MINUS:
                 $this->value .= StringHelper::fromCharCode($code);
                 $this->pos++;
-                if ($this->pos === $this->len || !$this->isDigit(StringHelper::charCodeAt($this->text, $this->pos))) {
+                if ($this->pos === $this->len || !$this->isDigit($this->charCodeAt($this->pos))) {
                     return $this->token = SyntaxKind::Unknown;
                 }
                 // found a minus, followed by a number so
@@ -425,11 +477,11 @@ final class Scanner implements JsonScanner
                 // is a literal? Read the full word.
                 while ($this->pos < $this->len && $this->isUnknownContentCharacter($code)) {
                     $this->pos++;
-                    $code = StringHelper::charCodeAt($this->text, $this->pos);
+                    $code = $this->charCodeAt($this->pos);
                 }
 
                 if ($this->tokenOffset !== $this->pos) {
-                    $this->value = StringHelper::substring($this->text, $this->tokenOffset, $this->pos);
+                    $this->value = $this->substring($this->tokenOffset, $this->pos);
                     // keywords: true, false, null
                     switch ($this->value) {
                         case 'true':
